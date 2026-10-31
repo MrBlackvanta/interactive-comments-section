@@ -50,6 +50,10 @@
   --container-thread: 45.625rem;
 }
 
+@utility v-focus {
+  @apply outline-accent focus-visible:outline-2 focus-visible:outline-offset-2;
+}
+
 @layer base {
   html {
     @apply overflow-y-scroll;

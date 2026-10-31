@@ -1,6 +1,7 @@
 import type { Comment } from "@/data";
-import { DAY, MINUTE, STORAGE_KEY } from "@/lib";
+import { castVote, DAY, MINUTE, STORAGE_KEY } from "@/lib";
 import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 import {
   afterEach,
@@ -23,14 +24,26 @@ const comment = (overrides: Partial<Comment>): Comment => ({
   content: "A comment",
   score: 0,
   createdAt: NOW,
+  vote: 0,
   replies: [],
   ...overrides,
 });
 
+const pill = (name: string) => {
+  const card = screen.getByRole("article", { name });
+  return {
+    up: within(card).getByRole("button", { name: "Upvote" }),
+    down: within(card).getByRole("button", { name: "Downvote" }),
+    score: within(card).getByText(/^-?\d+$/),
+  };
+};
+
+const setup = () => userEvent.setup({ delay: null });
+
 describe("CommentThread", () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.useFakeTimers({ now: NOW });
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   });
   afterEach(() => vi.useRealTimers());
 
@@ -111,6 +124,7 @@ describe("CommentThread", () => {
   });
 
   it("re-reads every age as each minute passes", () => {
+    vi.useFakeTimers({ now: NOW });
     save([comment({ createdAt: NOW - 30_000 })]);
     render(<CommentThread />);
 
@@ -121,6 +135,121 @@ describe("CommentThread", () => {
     });
 
     expect(screen.getByText("1 minute ago")).toBeInTheDocument();
+  });
+
+  it("offers an unpressed upvote and downvote on every item", () => {
+    render(<CommentThread />);
+
+    for (const card of screen.getAllByRole("article")) {
+      expect(
+        within(card).getByRole("button", { name: "Upvote", pressed: false }),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByRole("button", { name: "Downvote", pressed: false }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("raises the score on an upvote and undoes it on a second click", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    const { up, score } = pill("amirrobson 1 month ago");
+
+    await user.click(up);
+
+    expect(up).toHaveAttribute("aria-pressed", "true");
+    expect(score).toHaveTextContent("Score 13");
+
+    await user.click(up);
+
+    expect(up).toHaveAttribute("aria-pressed", "false");
+    expect(score).toHaveTextContent("Score 12");
+  });
+
+  it("moves the score by two when a vote switches direction", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    const { up, down, score } = pill("ramsesmiron 1 week ago");
+
+    await user.click(down);
+    expect(score).toHaveTextContent("Score 3");
+
+    await user.click(up);
+
+    expect(score).toHaveTextContent("Score 5");
+    expect(up).toHaveAttribute("aria-pressed", "true");
+    expect(down).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("counts rapid clicks against the latest score", () => {
+    render(<CommentThread />);
+    const { up, score } = pill("amirrobson 1 month ago");
+
+    act(() => {
+      up.click();
+      up.click();
+    });
+
+    expect(score).toHaveTextContent("Score 12");
+    expect(up).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("holds the order when a vote overtakes, then re-sorts on the next visit", async () => {
+    save([
+      comment({
+        id: 1,
+        username: "amirrobson",
+        score: 1,
+        createdAt: NOW - DAY,
+      }),
+      comment({ id: 2, username: "maxblagun", score: 1 }),
+    ]);
+    const user = setup();
+    const { unmount } = render(<CommentThread />);
+
+    await user.click(pill("maxblagun just now").up);
+
+    expect(screen.getAllByRole("article")[0]).toHaveAccessibleName(
+      "amirrobson 1 day ago",
+    );
+
+    unmount();
+    render(<CommentThread />);
+
+    expect(screen.getAllByRole("article")[0]).toHaveAccessibleName(
+      "maxblagun just now",
+    );
+  });
+
+  it("remembers a vote on the next visit", async () => {
+    const user = setup();
+    const { unmount } = render(<CommentThread />);
+    await user.click(pill("juliusomo you 2 days ago").down);
+
+    unmount();
+    render(<CommentThread />);
+
+    const { down, score } = pill("juliusomo you 2 days ago");
+    expect(down).toHaveAttribute("aria-pressed", "true");
+    expect(score).toHaveTextContent("Score 1");
+  });
+
+  it("shows a vote cast in another tab", () => {
+    render(<CommentThread />);
+    const thread = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEY,
+          newValue: JSON.stringify(castVote(thread, 1, 1)),
+        }),
+      );
+    });
+
+    const { up, score } = pill("amirrobson 1 month ago");
+    expect(up).toHaveAttribute("aria-pressed", "true");
+    expect(score).toHaveTextContent("Score 13");
   });
 
   it("prerenders the same seed whatever the build clock or storage says", () => {

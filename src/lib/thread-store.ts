@@ -17,10 +17,7 @@ function readSaved() {
 function save(comments: Comment[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(comments));
-    return true;
-  } catch {
-    return false;
-  }
+  } catch {}
 }
 
 function load() {
@@ -34,10 +31,40 @@ function load() {
 
 export function createThreadStore() {
   let comments: Comment[] | undefined;
+  const listeners = new Set<() => void>();
+
+  const getSnapshot = () => (comments ??= load());
+
+  const publish = (next: Comment[]) => {
+    comments = next;
+    for (const listener of listeners) listener();
+  };
+
+  const receive = ({ key, newValue }: StorageEvent) => {
+    if (key !== STORAGE_KEY) return;
+
+    const next = parseThread(newValue);
+    if (next) publish(next);
+  };
 
   return {
-    subscribe: () => () => {},
-    getSnapshot: () => (comments ??= load()),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      if (listeners.size === 1) window.addEventListener("storage", receive);
+
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+          window.removeEventListener("storage", receive);
+        }
+      };
+    },
+    getSnapshot,
     getServerSnapshot: () => PRERENDERED_THREAD,
+    update: (recipe: (current: Comment[]) => Comment[]) => {
+      const next = recipe(getSnapshot());
+      publish(next);
+      save(next);
+    },
   };
 }

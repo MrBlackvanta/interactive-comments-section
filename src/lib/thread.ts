@@ -1,9 +1,12 @@
 import {
   AVATARS,
   type Comment,
+  type Direction,
+  type Post,
   type Reply,
   type SeedComment,
   type Username,
+  type Vote,
 } from "@/data";
 import { DAY } from "./time";
 
@@ -21,20 +24,49 @@ export function sortThread(comments: Comment[]) {
     .toSorted(byScore);
 }
 
-function dated<T extends { daysAgo: number }>(
+function toPost<T extends { daysAgo: number }>(
   { daysAgo, ...post }: T,
   now: number,
 ) {
-  return { ...post, createdAt: now - daysAgo * DAY };
+  return { ...post, createdAt: now - daysAgo * DAY, vote: 0 as const };
 }
 
 export function seedThread(seed: SeedComment[], now: number): Comment[] {
   return sortThread(
     seed.map(({ replies, ...comment }) => ({
-      ...dated(comment, now),
-      replies: replies.map((reply) => dated(reply, now)),
+      ...toPost(comment, now),
+      replies: replies.map((reply) => toPost(reply, now)),
     })),
   );
+}
+
+type Change = <T extends Post>(post: T) => T;
+
+function updatePost(comments: Comment[], id: number, change: Change) {
+  return comments.map((comment) => {
+    if (comment.id === id) return change(comment);
+    if (!comment.replies.some((reply) => reply.id === id)) return comment;
+
+    return {
+      ...comment,
+      replies: comment.replies.map((reply) =>
+        reply.id === id ? change(reply) : reply,
+      ),
+    };
+  });
+}
+
+export function toggleVote<T extends Post>(post: T, direction: Direction): T {
+  const vote = post.vote === direction ? 0 : direction;
+  return { ...post, vote, score: post.score - post.vote + vote };
+}
+
+export function castVote(
+  comments: Comment[],
+  id: number,
+  direction: Direction,
+) {
+  return updatePost(comments, id, (post) => toggleVote(post, direction));
 }
 
 type Fields = Record<string, unknown>;
@@ -45,12 +77,16 @@ const isRecord = (value: unknown): value is Fields =>
 const isUsername = (value: unknown): value is Username =>
   typeof value === "string" && Object.hasOwn(AVATARS, value);
 
+const isVote = (value: unknown): value is Vote =>
+  value === 1 || value === 0 || value === -1;
+
 const isPost = (value: Fields) =>
   Number.isInteger(value.id) &&
   isUsername(value.username) &&
   typeof value.content === "string" &&
   Number.isInteger(value.score) &&
-  Number.isFinite(value.createdAt);
+  Number.isFinite(value.createdAt) &&
+  isVote(value.vote);
 
 const isReply = (value: unknown): value is Reply =>
   isRecord(value) && isPost(value) && isUsername(value.replyingTo);

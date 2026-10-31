@@ -1,13 +1,21 @@
-import { AVATARS, CURRENT_USER, type Post, type Username } from "@/data";
+import {
+  AVATARS,
+  CURRENT_USER,
+  type Direction,
+  type Post,
+  type Username,
+} from "@/data";
 import { timeAgo } from "@/lib";
 import { useId } from "react";
+import VotePill from "./vote-pill";
 
 type CommentCardProps = {
   post: Post & { replyingTo?: Username };
   now: number;
+  onVote: (id: number, direction: Direction) => void;
 };
 
-export default function CommentCard({ post, now }: CommentCardProps) {
+export default function CommentCard({ post, now, onVote }: CommentCardProps) {
   const id = useId();
   const authorId = `${id}-author`;
   const ageId = `${id}-age`;
@@ -49,12 +57,11 @@ export default function CommentCard({ post, now }: CommentCardProps) {
         )}
         {post.content}
       </p>
-      <div className="row-start-3 grid h-10 w-25 grid-cols-3 place-items-center rounded-vote bg-page md:col-start-1 md:row-span-2 md:row-start-1 md:h-25 md:w-10 md:grid-cols-1 md:grid-rows-3">
-        <p className="col-start-2 text-heading-m text-accent md:col-start-1 md:row-start-2">
-          <span className="sr-only">Score </span>
-          {post.score}
-        </p>
-      </div>
+      <VotePill
+        score={post.score}
+        vote={post.vote}
+        onVote={(direction) => onVote(post.id, direction)}
+      />
     </article>
   );
 }
