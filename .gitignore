@@ -1,0 +1,33 @@
+# premium design files and briefs — never publish these
+frontend-mentor-files/
+*.fig
+*.sketch
+*.xd
+
+# dependencies
+node_modules
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# cloudflare
+.wrangler/
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+Desktop.ini
+.idea/
+
+# debug
+npm-debug.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+!.env.example
+.vitest/
