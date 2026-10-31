@@ -14,9 +14,40 @@
 @theme {
   --color-*: initial;
   --color-page: #f5f6fa;
-  --color-ink: #334253;
-  --color-muted: #67727e;
   --color-white: #ffffff;
+  --color-black: #000000;
+  --color-ink: #334253;
+  --color-copy: #67727e;
+  --color-line: #e9ebf0;
+  --color-accent: #5357b6;
+  --color-accent-soft: #c5c6ef;
+  --color-danger: #c8414a;
+  --color-danger-soft: #ffb8bb;
+
+  --text-heading-l: 1.5rem;
+  --text-heading-l--line-height: 1.75rem;
+  --text-heading-l--font-weight: 500;
+  --text-heading-l-mobile: 1.25rem;
+  --text-heading-l-mobile--line-height: 1.5rem;
+  --text-heading-l-mobile--font-weight: 500;
+
+  --text-heading-m: 1rem;
+  --text-heading-m--line-height: 1.1875rem;
+  --text-heading-m--font-weight: 500;
+
+  --text-body-m: 1rem;
+  --text-body-m--line-height: 1.5rem;
+  --text-body-m-bold: 1rem;
+  --text-body-m-bold--line-height: 1.5rem;
+  --text-body-m-bold--font-weight: 500;
+
+  --text-badge: 0.8125rem;
+  --text-badge--line-height: 0.9375rem;
+  --text-badge--font-weight: 500;
+
+  --radius-vote: 0.625rem;
+
+  --container-thread: 45.625rem;
 }
 
 @layer base {
@@ -25,7 +56,7 @@
   }
 
   body {
-    @apply bg-page text-ink;
+    @apply bg-page text-body-m text-copy;
   }
 
   button:not(:disabled) {
