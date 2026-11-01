@@ -1,6 +1,7 @@
 import type { Comment, Reply } from "@/data";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  addComment,
   castVote,
   parseThread,
   seedThread,
@@ -189,6 +190,58 @@ describe("castVote", () => {
 
   it("never reorders, even when a vote overtakes", () => {
     expect(ids(castVote(thread, 2, 1))).toEqual([1, 2]);
+  });
+});
+
+describe("addComment", () => {
+  it("appends the trimmed text as the current user's, unvoted and dated", () => {
+    const thread = [comment({ id: 1, score: -5 })];
+
+    expect(addComment(thread, "  Nice work!\n\nAgreed.  ", 42)).toEqual([
+      thread[0],
+      {
+        id: 2,
+        username: "juliusomo",
+        content: "Nice work!\n\nAgreed.",
+        score: 0,
+        createdAt: 42,
+        vote: 0,
+        replies: [],
+      },
+    ]);
+  });
+
+  it.each([
+    ["the first id in an empty thread", [], 1],
+    [
+      "the id after the highest comment",
+      [comment({ id: 7 }), comment({ id: 3 })],
+      8,
+    ],
+    [
+      "the id after the highest reply",
+      [comment({ id: 2, replies: [reply({ id: 9 }), reply({ id: 4 })] })],
+      10,
+    ],
+  ])("takes %s", (_, thread, expected) => {
+    expect(addComment(thread, "Hi", 0).at(-1)?.id).toBe(expected);
+  });
+
+  it.each([
+    ["empty", ""],
+    ["blank", " \n\t "],
+  ])("ignores %s text", (_, text) => {
+    const thread = [comment()];
+
+    expect(addComment(thread, text, 0)).toBe(thread);
+  });
+
+  it("leaves the original thread untouched", () => {
+    const thread = [comment()];
+
+    addComment(thread, "Hi", 0);
+
+    expect(thread).toEqual([comment()]);
   });
 });
 

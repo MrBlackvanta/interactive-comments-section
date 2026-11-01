@@ -1,6 +1,7 @@
 import {
   AVATARS,
   type Comment,
+  CURRENT_USER,
   type Direction,
   type Post,
   type Reply,
@@ -67,6 +68,36 @@ export function castVote(
   direction: Direction,
 ) {
   return updatePost(comments, id, (post) => toggleVote(post, direction));
+}
+
+function nextId(comments: Comment[]) {
+  const ids = comments.flatMap((comment) => [
+    comment.id,
+    ...comment.replies.map((reply) => reply.id),
+  ]);
+  return Math.max(0, ...ids) + 1;
+}
+
+export function addComment(
+  comments: Comment[],
+  content: string,
+  createdAt: number,
+): Comment[] {
+  const text = content.trim();
+  if (!text) return comments;
+
+  return [
+    ...comments,
+    {
+      id: nextId(comments),
+      username: CURRENT_USER,
+      content: text,
+      score: 0,
+      createdAt,
+      vote: 0,
+      replies: [],
+    },
+  ];
 }
 
 type Fields = Record<string, unknown>;

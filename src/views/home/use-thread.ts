@@ -1,5 +1,5 @@
 import type { Direction } from "@/data";
-import { castVote, createThreadStore } from "@/lib";
+import { addComment, castVote, createThreadStore } from "@/lib";
 import { useState, useSyncExternalStore } from "react";
 
 export function useThread() {
@@ -13,5 +13,8 @@ export function useThread() {
   const vote = (id: number, direction: Direction) =>
     store.update((current) => castVote(current, id, direction));
 
-  return { comments, vote };
+  const add = (content: string) =>
+    store.update((current) => addComment(current, content, Date.now()));
+
+  return { comments, vote, add };
 }

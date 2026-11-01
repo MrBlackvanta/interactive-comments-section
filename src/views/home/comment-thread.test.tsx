@@ -1,5 +1,6 @@
 import type { Comment } from "@/data";
 import { castVote, DAY, MINUTE, STORAGE_KEY } from "@/lib";
+import { installMatchMedia } from "@/test/media";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
@@ -39,6 +40,13 @@ const pill = (name: string) => {
 };
 
 const setup = () => userEvent.setup({ delay: null });
+
+const composer = () => ({
+  field: screen.getByRole("textbox", { name: "Add a comment" }),
+  send: screen.getByRole("button", { name: "Send" }),
+});
+
+const latest = () => screen.getAllByRole("article").at(-1)!;
 
 describe("CommentThread", () => {
   beforeEach(() => {
@@ -250,6 +258,112 @@ describe("CommentThread", () => {
     const { up, score } = pill("amirrobson 1 month ago");
     expect(up).toHaveAttribute("aria-pressed", "true");
     expect(score).toHaveTextContent("Score 13");
+  });
+
+  it("sends a trimmed comment to the end of the thread as yours, unvoted", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    const { field, send } = composer();
+
+    await user.type(field, "  Nice work!  ");
+    await user.click(send);
+
+    expect(screen.getAllByRole("article")).toHaveLength(5);
+    expect(latest()).toHaveAccessibleName("juliusomo you just now");
+    expect(within(latest()).getByText("Nice work!")).toBeInTheDocument();
+    expect(within(latest()).getByText("0")).toHaveTextContent("Score 0");
+    expect(
+      within(latest()).getAllByRole("button", { pressed: false }),
+    ).toHaveLength(2);
+    expect(field).toHaveValue("");
+  });
+
+  it("sends without the browser submitting the page away", async () => {
+    let submit: Event | undefined;
+    document.addEventListener("submit", (event) => (submit = event), {
+      once: true,
+    });
+    const user = setup();
+    render(<CommentThread />);
+
+    await user.type(composer().field, "Stay");
+    await user.click(composer().send);
+
+    expect(submit?.defaultPrevented).toBe(true);
+  });
+
+  it.each([
+    ["nothing", ""],
+    ["only spaces and line breaks", "  {Enter}  "],
+  ])("refuses to send %s", async (_, text) => {
+    const user = setup();
+    render(<CommentThread />);
+    const { field, send } = composer();
+
+    if (text) await user.type(field, text);
+    await user.click(send);
+
+    expect(field).toBeInvalid();
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("accepts the text again once a blank draft gets words", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    const { field, send } = composer();
+
+    await user.type(field, "   ");
+    await user.type(field, "Hello");
+    await user.click(send);
+
+    expect(within(latest()).getByText("Hello")).toBeInTheDocument();
+  });
+
+  it("keeps a sent comment on the next visit", async () => {
+    const user = setup();
+    const { unmount } = render(<CommentThread />);
+    await user.type(composer().field, "Still here");
+    await user.click(composer().send);
+
+    unmount();
+    render(<CommentThread />);
+
+    expect(within(latest()).getByText("Still here")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["smoothly", ["(prefers-reduced-motion: no-preference)"], "smooth"],
+    ["instantly when motion is reduced", [], "instant"],
+  ])("scrolls the new comment into view %s", async (_, queries, behavior) => {
+    installMatchMedia(queries);
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const user = setup();
+    render(<CommentThread />);
+
+    await user.type(composer().field, "Scroll to me");
+    await user.click(composer().send);
+
+    expect(scroll).toHaveBeenCalledOnce();
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest", behavior });
+    expect(scroll.mock.contexts[0]).toBe(latest().closest("li"));
+  });
+
+  it("announces every comment sent through an explicit live region, since Chromium gives <output> no status role", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    const status = screen.getByRole("status");
+
+    await user.type(composer().field, "First");
+    await user.click(composer().send);
+    const first = status.firstElementChild;
+
+    await user.type(composer().field, "Second");
+    await user.click(composer().send);
+
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveTextContent(/^Comment sent$/);
+    expect(status.firstElementChild).not.toBe(first);
   });
 
   it("prerenders the same seed whatever the build clock or storage says", () => {

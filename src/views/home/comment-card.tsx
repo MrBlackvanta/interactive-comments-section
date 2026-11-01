@@ -47,7 +47,7 @@ export default function CommentCard({ post, now, onVote }: CommentCardProps) {
           </time>
         </div>
       </header>
-      <p className="col-span-2 md:col-start-2 md:row-start-2">
+      <p className="col-span-2 wrap-anywhere whitespace-pre-line md:col-start-2 md:row-start-2">
         {post.replyingTo && (
           <>
             <span className="font-medium text-accent">
