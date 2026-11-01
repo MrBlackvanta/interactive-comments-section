@@ -9,7 +9,7 @@ import { useNow } from "./use-now";
 import { useThread } from "./use-thread";
 
 export default function CommentThread() {
-  const { comments, vote, add, reply } = useThread();
+  const { comments, vote, add, reply, edit } = useThread();
   const now = useNow();
   const listRef = useRef<HTMLOListElement>(null);
   const [status, setStatus] = useState({ message: "", count: 0 });
@@ -28,6 +28,11 @@ export default function CommentThread() {
     announce("Reply sent");
   };
 
+  const saveEdit = (id: number, content: string) => {
+    edit(id, content);
+    announce("Comment updated");
+  };
+
   return (
     <div className="mx-auto flex max-w-thread flex-col gap-4 md:gap-5">
       <ol
@@ -42,6 +47,7 @@ export default function CommentThread() {
             now={now}
             onVote={vote}
             onReply={sendReply}
+            onEdit={saveEdit}
           />
         ))}
       </ol>

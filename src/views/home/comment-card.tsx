@@ -1,4 +1,4 @@
-import { ReplyIcon } from "@/components/icons";
+import { EditIcon, ReplyIcon } from "@/components/icons";
 import {
   AVATARS,
   CURRENT_USER,
@@ -8,7 +8,9 @@ import {
 } from "@/data";
 import { timeAgo } from "@/lib";
 import { useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import CommentForm from "./comment-form";
+import EditForm from "./edit-form";
 import VotePill from "./vote-pill";
 
 type CommentCardProps = {
@@ -16,20 +18,29 @@ type CommentCardProps = {
   now: number;
   onVote: (id: number, direction: Direction) => void;
   onReply: (id: number, content: string) => void;
+  onEdit: (id: number, content: string) => void;
 };
+
+const body = "col-span-2 md:col-start-2 md:row-start-2";
+
+const action =
+  "col-start-2 row-start-3 flex items-center gap-2 self-center justify-self-end text-body-m-bold text-accent v-focus transition-[color] duration-150 ease-out hover:text-accent-soft md:col-start-3 md:row-start-1";
 
 export default function CommentCard({
   post,
   now,
   onVote,
   onReply,
+  onEdit,
 }: CommentCardProps) {
   const id = useId();
   const authorId = `${id}-author`;
   const ageId = `${id}-age`;
   const own = post.username === CURRENT_USER;
   const [replying, setReplying] = useState(false);
+  const [editing, setEditing] = useState(false);
   const replyButton = useRef<HTMLButtonElement>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
 
   const closeReply = () => {
     setReplying(false);
@@ -39,6 +50,16 @@ export default function CommentCard({
   const sendReply = (content: string) => {
     setReplying(false);
     onReply(post.id, content);
+  };
+
+  const closeEdit = () => {
+    flushSync(() => setEditing(false));
+    editButton.current?.focus();
+  };
+
+  const saveEdit = (content: string) => {
+    onEdit(post.id, content);
+    closeEdit();
   };
 
   return (
@@ -70,28 +91,48 @@ export default function CommentCard({
             </time>
           </div>
         </header>
-        <p className="col-span-2 wrap-anywhere whitespace-pre-line md:col-start-2 md:row-start-2">
-          {post.replyingTo && (
-            <>
-              <span className="font-medium text-accent">
-                @{post.replyingTo}
-              </span>{" "}
-            </>
-          )}
-          {post.content}
-        </p>
+        {editing ? (
+          <EditForm
+            post={post}
+            className={body}
+            onSave={saveEdit}
+            onCancel={closeEdit}
+          />
+        ) : (
+          <p className={`${body} wrap-anywhere whitespace-pre-line`}>
+            {post.replyingTo && (
+              <>
+                <span className="font-medium text-accent">
+                  @{post.replyingTo}
+                </span>{" "}
+              </>
+            )}
+            {post.content}
+          </p>
+        )}
         <VotePill
           score={post.score}
           vote={post.vote}
           onVote={(direction) => onVote(post.id, direction)}
         />
-        {!own && (
+        {own ? (
+          <button
+            ref={editButton}
+            type="button"
+            aria-expanded={editing}
+            onClick={() => setEditing((open) => !open)}
+            className={action}
+          >
+            <EditIcon />
+            Edit
+          </button>
+        ) : (
           <button
             ref={replyButton}
             type="button"
             aria-expanded={replying}
             onClick={() => setReplying((open) => !open)}
-            className="col-start-2 row-start-3 flex items-center gap-2 self-center justify-self-end text-body-m-bold text-accent v-focus transition-[color] duration-150 ease-out hover:text-accent-soft md:col-start-3 md:row-start-1"
+            className={action}
           >
             <ReplyIcon />
             Reply

@@ -4,6 +4,7 @@ import {
   addComment,
   addReply,
   castVote,
+  editPost,
   parseThread,
   seedThread,
   sortThread,
@@ -344,6 +345,65 @@ describe("addReply", () => {
     const before = structuredClone(thread);
 
     addReply(thread, 3, "Hi", 0);
+
+    expect(thread).toEqual(before);
+  });
+});
+
+describe("editPost", () => {
+  const thread = [
+    comment({ id: 1, username: "juliusomo", content: "Old" }),
+    comment({ id: 2, replies: [reply({ id: 3, content: "Old reply" })] }),
+  ];
+
+  const find = (comments: Comment[], id: number) =>
+    comments
+      .flatMap((comment) => [comment, ...comment.replies])
+      .find((post) => post.id === id);
+
+  it.each([
+    ["a comment, trimmed", 1, "  New \n", "New"],
+    [
+      "a comment, keeping a leading mention",
+      1,
+      "@maxblagun New",
+      "@maxblagun New",
+    ],
+    ["a reply, without its leading mention", 3, "@maxblagun  New", "New"],
+    [
+      "a reply, keeping a mention of someone else",
+      3,
+      "@ramsesmiron New",
+      "@ramsesmiron New",
+    ],
+  ])("rewrites %s and nothing else", (_, id, text, content) => {
+    expect(find(editPost(thread, id, text), id)).toEqual({
+      ...find(thread, id),
+      content,
+    });
+  });
+
+  it("leaves the other comments as they were", () => {
+    const [first, second] = editPost(thread, 3, "New");
+
+    expect(first).toBe(thread[0]);
+    expect(second).not.toBe(thread[1]);
+  });
+
+  it.each([
+    ["an unknown id", 99, "New"],
+    ["blank text", 1, " \n "],
+    ["only the mention", 3, "@maxblagun "],
+    ["the same text", 1, " Old "],
+    ["the same text behind its mention", 3, "@maxblagun Old reply"],
+  ])("ignores %s", (_, id, text) => {
+    expect(editPost(thread, id, text)).toBe(thread);
+  });
+
+  it("leaves the original thread untouched", () => {
+    const before = structuredClone(thread);
+
+    editPost(thread, 3, "New");
 
     expect(thread).toEqual(before);
   });

@@ -70,6 +70,35 @@ const openReply = async (user: User, name: string) => {
   return replyForm(name.split(" ")[0]);
 };
 
+const OWN_REPLY = "juliusomo you 2 days ago";
+
+const OWN_TEXT =
+  "I couldn't agree more with this. Everything moves so fast and it always seems like everyone knows the newest library/framework. But the fundamentals are what stay constant.";
+
+const editButton = (name = OWN_REPLY) =>
+  within(screen.getByRole("article", { name })).getByRole("button", {
+    name: "Edit",
+  });
+
+const openEdit = async (
+  user: User,
+  name = OWN_REPLY,
+  label = "Edit your reply to @ramsesmiron",
+) => {
+  await user.click(editButton(name));
+  const field = screen.getByRole<HTMLTextAreaElement>("textbox", {
+    name: label,
+  });
+  return {
+    field,
+    update: within(field.form!).getByRole("button", { name: "Update" }),
+  };
+};
+
+const shown = (name = OWN_REPLY) =>
+  within(screen.getByRole("article", { name })).queryByText("@ramsesmiron")
+    ?.parentElement;
+
 describe("CommentThread", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -300,19 +329,36 @@ describe("CommentThread", () => {
     expect(field).toHaveValue("");
   });
 
-  it("sends without the browser submitting the page away", async () => {
-    let submit: Event | undefined;
-    document.addEventListener("submit", (event) => (submit = event), {
-      once: true,
-    });
-    const user = setup();
-    render(<CommentThread />);
+  it.each([
+    [
+      "a comment",
+      async (user: User) => {
+        await user.type(composer().field, "Stay");
+        await user.click(composer().send);
+      },
+    ],
+    [
+      "an edit",
+      async (user: User) => {
+        const { update } = await openEdit(user);
+        await user.click(update);
+      },
+    ],
+  ])(
+    "sends %s without the browser submitting the page away",
+    async (_, act) => {
+      let submit: Event | undefined;
+      document.addEventListener("submit", (event) => (submit = event), {
+        once: true,
+      });
+      const user = setup();
+      render(<CommentThread />);
 
-    await user.type(composer().field, "Stay");
-    await user.click(composer().send);
+      await act(user);
 
-    expect(submit?.defaultPrevented).toBe(true);
-  });
+      expect(submit?.defaultPrevented).toBe(true);
+    },
+  );
 
   it.each([
     ["nothing", ""],
@@ -419,6 +465,7 @@ describe("CommentThread", () => {
     );
     expect(field).toHaveValue("@maxblagun ");
     expect(field).toHaveFocus();
+    expect(field).toBeRequired();
     expect(field).toHaveAttribute("placeholder", "Reply to @maxblagun…");
     expect(field.selectionStart).toBe(field.value.length);
   });
@@ -561,6 +608,142 @@ describe("CommentThread", () => {
         screen.getByRole("list", { name: "Replies to amirrobson" }),
       ).getByText("Still here"),
     ).toBeInTheDocument();
+  });
+
+  it("offers a collapsed Edit on your items and none on anyone else's", () => {
+    render(<CommentThread />);
+
+    for (const card of screen.getAllByRole("article")) {
+      const own = within(card).queryByText("you") !== null;
+      const edit = within(card).queryByRole("button", { name: "Edit" });
+
+      if (own) expect(edit).toHaveAttribute("aria-expanded", "false");
+      else expect(edit).not.toBeInTheDocument();
+    }
+  });
+
+  it("opens your reply for editing in place, mention included and the caret at the end", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field } = await openEdit(user);
+
+    expect(editButton()).toHaveAttribute("aria-expanded", "true");
+    expect(field).toHaveValue(`@ramsesmiron ${OWN_TEXT}`);
+    expect(field).toHaveFocus();
+    expect(field).toBeRequired();
+    expect(field.selectionStart).toBe(field.value.length);
+    expect(shown()).toBeUndefined();
+  });
+
+  it("saves the edit in place, keeps the mention out of the text, and returns focus to Edit", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field, update } = await openEdit(user);
+    await user.clear(field);
+    await user.type(field, "@ramsesmiron  Fair point. ");
+    await user.click(update);
+
+    const replies = within(
+      screen.getByRole("list", { name: "Replies to maxblagun" }),
+    ).getAllByRole("article");
+    expect(field).not.toBeInTheDocument();
+    expect(replies[1]).toHaveAccessibleName(OWN_REPLY);
+    expect(shown()).toHaveTextContent(/^@ramsesmiron Fair point\.$/);
+    expect(editButton()).toHaveFocus();
+    expect(editButton()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("status")).toHaveTextContent(/^Comment updated$/);
+  });
+
+  it("edits a comment of yours that answers no one", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    await user.type(composer().field, "First draft");
+    await user.click(composer().send);
+
+    const { field, update } = await openEdit(
+      user,
+      "juliusomo you just now",
+      "Edit your comment",
+    );
+    expect(field).toHaveValue("First draft");
+    await user.type(field, ", revised");
+    await user.click(update);
+
+    expect(
+      within(latest()).getByText("First draft, revised"),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["only the mention", "{Control>}a{/Control}@ramsesmiron "],
+    ["nothing at all", "{Control>}a{/Control}{Backspace}"],
+  ])("refuses to save an edit of %s", async (_, keys) => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field, update } = await openEdit(user);
+    await user.type(field, keys);
+    await user.click(update);
+
+    expect(field).toBeInvalid();
+    expect(field).toBeInTheDocument();
+  });
+
+  it.each([
+    ["on Escape", (user: User) => user.keyboard("{Escape}")],
+    ["when Edit is pressed again", (user: User) => user.click(editButton())],
+  ])(
+    "discards the edit %s, keeps the text and leaves focus on Edit",
+    async (_, cancel) => {
+      const user = setup();
+      render(<CommentThread />);
+
+      const { field } = await openEdit(user);
+      await user.type(field, " Never mind");
+      await cancel(user);
+
+      expect(field).not.toBeInTheDocument();
+      expect(shown()).toHaveTextContent(`@ramsesmiron ${OWN_TEXT}`);
+      expect(editButton()).toHaveFocus();
+
+      const reopened = await openEdit(user);
+      expect(reopened.field).toHaveValue(`@ramsesmiron ${OWN_TEXT}`);
+    },
+  );
+
+  it.each([
+    ["Update", (user: User, update: HTMLElement) => user.click(update)],
+    ["Escape", (user: User) => user.keyboard("{Escape}")],
+  ])(
+    "removes the form before focusing Edit on %s, so the browser never scrolls to where Edit was",
+    async (_, close) => {
+      const user = setup();
+      render(<CommentThread />);
+      const { field, update } = await openEdit(user);
+      let formOpen: boolean | undefined;
+      vi.spyOn(editButton(), "focus").mockImplementation(() => {
+        formOpen = field.isConnected;
+      });
+
+      await close(user, update);
+
+      expect(formOpen).toBe(false);
+    },
+  );
+
+  it("keeps an edit on the next visit", async () => {
+    const user = setup();
+    const { unmount } = render(<CommentThread />);
+    const { field, update } = await openEdit(user);
+    await user.type(field, " Still here");
+    await user.click(update);
+
+    unmount();
+    render(<CommentThread />);
+
+    expect(shown()).toHaveTextContent(/constant\. Still here$/);
   });
 
   it("prerenders the same seed whatever the build clock or storage says", () => {

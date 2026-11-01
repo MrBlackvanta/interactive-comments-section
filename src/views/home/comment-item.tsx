@@ -9,6 +9,7 @@ type CommentItemProps = {
   now: number;
   onVote: (id: number, direction: Direction) => void;
   onReply: (id: number, content: string) => void;
+  onEdit: (id: number, content: string) => void;
 };
 
 export default function CommentItem({
@@ -16,6 +17,7 @@ export default function CommentItem({
   now,
   onVote,
   onReply,
+  onEdit,
 }: CommentItemProps) {
   const repliesRef = useRef<HTMLOListElement>(null);
 
@@ -29,7 +31,13 @@ export default function CommentItem({
 
   return (
     <li className="flex flex-col gap-4 md:gap-5">
-      <CommentCard post={comment} now={now} onVote={onVote} onReply={reply} />
+      <CommentCard
+        post={comment}
+        now={now}
+        onVote={onVote}
+        onReply={reply}
+        onEdit={onEdit}
+      />
       {comment.replies.length > 0 && (
         <ol
           ref={repliesRef}
@@ -43,6 +51,7 @@ export default function CommentItem({
                 now={now}
                 onVote={onVote}
                 onReply={reply}
+                onEdit={onEdit}
               />
             </li>
           ))}

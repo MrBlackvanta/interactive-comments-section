@@ -144,6 +144,19 @@ export function addReply(
   );
 }
 
+const mentionOf = (post: Comment | Reply) =>
+  "replyingTo" in post ? post.replyingTo : undefined;
+
+export function editPost(comments: Comment[], id: number, content: string) {
+  const target = locate(comments, id)?.target;
+  if (!target) return comments;
+
+  const text = toContent(content, mentionOf(target));
+  if (!text || text === target.content) return comments;
+
+  return updatePost(comments, id, (post) => ({ ...post, content: text }));
+}
+
 type Fields = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is Fields =>
