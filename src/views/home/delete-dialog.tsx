@@ -6,9 +6,6 @@ type DeleteDialogProps = {
   onConfirm: () => void;
 };
 
-const choice =
-  "h-12 rounded-lg text-body-m-bold text-white uppercase v-focus transition-[background-color] duration-150 ease-out";
-
 export default function DeleteDialog({
   ref,
   onCancel,
@@ -40,14 +37,14 @@ export default function DeleteDialog({
         <button
           type="button"
           onClick={onCancel}
-          className={`${choice} bg-copy hover:bg-copy/50`}
+          className="v-button bg-copy hover:bg-copy/50"
         >
           No, cancel
         </button>
         <button
           type="button"
           onClick={onConfirm}
-          className={`${choice} bg-danger hover:bg-danger-soft`}
+          className="v-button bg-danger hover:bg-danger-soft"
         >
           Yes, delete
         </button>

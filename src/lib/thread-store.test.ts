@@ -8,7 +8,11 @@ import {
   vi,
 } from "vite-plus/test";
 import { seedThread } from "./thread";
-import { createThreadStore, STORAGE_KEY } from "./thread-store";
+import {
+  clearSavedThread,
+  createThreadStore,
+  STORAGE_KEY,
+} from "./thread-store";
 import { DAY, PRERENDER_TIME } from "./time";
 
 const NOW = Date.UTC(2026, 9, 31, 12, 0, 0);
@@ -81,6 +85,27 @@ describe("createThreadStore", () => {
     });
 
     expect(createThreadStore().getSnapshot()).toEqual(seedThread(SEED, NOW));
+  });
+
+  it("forgets the saved thread, so the next visit starts from a fresh seed", () => {
+    localStorage.setItem("unrelated", "kept");
+    createThreadStore().update(() => []);
+    clearSavedThread();
+    vi.setSystemTime(NOW + 3 * DAY);
+
+    expect(saved()).toBeNull();
+    expect(localStorage.getItem("unrelated")).toBe("kept");
+    expect(createThreadStore().getSnapshot()).toEqual(
+      seedThread(SEED, NOW + 3 * DAY),
+    );
+  });
+
+  it("carries on when storage refuses to forget the thread", () => {
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new DOMException("Access denied", "SecurityError");
+    });
+
+    expect(clearSavedThread).not.toThrow();
   });
 
   it("still serves the thread when storage cannot be read", () => {

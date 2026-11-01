@@ -20,6 +20,12 @@ function save(comments: Comment[]) {
   } catch {}
 }
 
+export function clearSavedThread() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
+
 function load() {
   const saved = parseThread(readSaved());
   if (saved) return sortThread(saved);

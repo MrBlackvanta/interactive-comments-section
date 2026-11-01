@@ -185,12 +185,15 @@ const isUsername = (value: unknown): value is Username =>
 const isVote = (value: unknown): value is Vote =>
   value === 1 || value === 0 || value === -1;
 
+const isTime = (value: unknown) =>
+  typeof value === "number" && !Number.isNaN(new Date(value).getTime());
+
 const isPost = (value: Fields) =>
   Number.isInteger(value.id) &&
   isUsername(value.username) &&
   typeof value.content === "string" &&
   Number.isInteger(value.score) &&
-  Number.isFinite(value.createdAt) &&
+  isTime(value.createdAt) &&
   isVote(value.vote);
 
 const isReply = (value: unknown): value is Reply =>

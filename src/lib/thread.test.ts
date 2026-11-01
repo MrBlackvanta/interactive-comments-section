@@ -486,6 +486,7 @@ describe("deletePost", () => {
 
 describe("parseThread", () => {
   const valid = comment({ replies: [reply()] });
+  const LAST_DATE = 8.64e15;
 
   it.each([
     ["an empty thread", "[]", []],
@@ -494,6 +495,11 @@ describe("parseThread", () => {
       "votes in either direction",
       JSON.stringify([{ ...valid, vote: -1, replies: [reply({ vote: 1 })] }]),
       [{ ...valid, vote: -1, replies: [reply({ vote: 1 })] }],
+    ],
+    [
+      "the last date a Date can hold",
+      JSON.stringify([{ ...valid, createdAt: LAST_DATE }]),
+      [{ ...valid, createdAt: LAST_DATE }],
     ],
   ])("accepts %s", (_, json, expected) => {
     expect(parseThread(json)).toEqual(expected);
@@ -544,6 +550,18 @@ describe("parseThread", () => {
     [
       "a reply missing its id",
       JSON.stringify([{ ...valid, replies: [{ ...reply(), id: undefined }] }]),
+    ],
+    [
+      "a date written as text",
+      JSON.stringify([{ ...valid, createdAt: "2026-01-01" }]),
+    ],
+    [
+      "a date past the last one a Date can hold",
+      JSON.stringify([{ ...valid, createdAt: LAST_DATE + 1 }]),
+    ],
+    [
+      "a reply dated past the last one a Date can hold",
+      JSON.stringify([{ ...valid, replies: [reply({ createdAt: 1e300 })] }]),
     ],
   ])("rejects %s", (_, json) => {
     expect(parseThread(json)).toBeNull();
