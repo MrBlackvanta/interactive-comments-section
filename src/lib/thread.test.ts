@@ -4,8 +4,10 @@ import {
   addComment,
   addReply,
   castVote,
+  deletePost,
   editPost,
   parseThread,
+  readingOrder,
   seedThread,
   sortThread,
   toContent,
@@ -404,6 +406,79 @@ describe("editPost", () => {
     const before = structuredClone(thread);
 
     editPost(thread, 3, "New");
+
+    expect(thread).toEqual(before);
+  });
+});
+
+describe("readingOrder", () => {
+  it("lists each comment followed by its replies", () => {
+    const thread = [
+      comment({ id: 4, replies: [reply({ id: 2 }), reply({ id: 5 })] }),
+      comment({ id: 1 }),
+      comment({ id: 3, replies: [reply({ id: 6 })] }),
+    ];
+
+    expect(ids(readingOrder(thread))).toEqual([4, 2, 5, 1, 3, 6]);
+  });
+});
+
+describe("deletePost", () => {
+  const thread = [
+    comment({ id: 1, replies: [reply({ id: 2 }), reply({ id: 3 })] }),
+    comment({ id: 4, replies: [reply({ id: 5 })] }),
+  ];
+
+  const shape = (comments: Comment[]) =>
+    comments.map(({ id, replies }) => [id, ids(replies)]);
+
+  it.each([
+    ["a comment along with its replies", 1, [[4, [5]]]],
+    ["the last comment", 4, [[1, [2, 3]]]],
+    [
+      "a reply, keeping its siblings",
+      2,
+      [
+        [1, [3]],
+        [4, [5]],
+      ],
+    ],
+    [
+      "a later reply",
+      3,
+      [
+        [1, [2]],
+        [4, [5]],
+      ],
+    ],
+    [
+      "an only reply, keeping its comment",
+      5,
+      [
+        [1, [2, 3]],
+        [4, []],
+      ],
+    ],
+  ])("removes %s", (_, id, expected) => {
+    expect(shape(deletePost(thread, id))).toEqual(expected);
+  });
+
+  it("leaves the other comments as they were", () => {
+    const [first, second] = deletePost(thread, 5);
+
+    expect(first).toBe(thread[0]);
+    expect(second).not.toBe(thread[1]);
+  });
+
+  it("ignores an unknown id", () => {
+    expect(deletePost(thread, 99)).toBe(thread);
+  });
+
+  it("leaves the original thread untouched", () => {
+    const before = structuredClone(thread);
+
+    deletePost(thread, 2);
+    deletePost(thread, 4);
 
     expect(thread).toEqual(before);
   });

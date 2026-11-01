@@ -10,6 +10,7 @@ type CommentItemProps = {
   onVote: (id: number, direction: Direction) => void;
   onReply: (id: number, content: string) => void;
   onEdit: (id: number, content: string) => void;
+  onDelete: (id: number) => void;
 };
 
 export default function CommentItem({
@@ -18,6 +19,7 @@ export default function CommentItem({
   onVote,
   onReply,
   onEdit,
+  onDelete,
 }: CommentItemProps) {
   const repliesRef = useRef<HTMLOListElement>(null);
 
@@ -37,6 +39,7 @@ export default function CommentItem({
         onVote={onVote}
         onReply={reply}
         onEdit={onEdit}
+        onDelete={onDelete}
       />
       {comment.replies.length > 0 && (
         <ol
@@ -52,6 +55,7 @@ export default function CommentItem({
                 onVote={onVote}
                 onReply={reply}
                 onEdit={onEdit}
+                onDelete={onDelete}
               />
             </li>
           ))}

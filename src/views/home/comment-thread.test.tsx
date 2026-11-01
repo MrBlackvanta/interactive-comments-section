@@ -99,6 +99,20 @@ const shown = (name = OWN_REPLY) =>
   within(screen.getByRole("article", { name })).queryByText("@ramsesmiron")
     ?.parentElement;
 
+const deleteButton = (
+  card = screen.getByRole("article", { name: OWN_REPLY }),
+) => within(card).getByRole("button", { name: "Delete" });
+
+const openDelete = async (user: User, card?: HTMLElement) => {
+  await user.click(deleteButton(card));
+  const dialog = screen.getByRole("alertdialog", { name: "Delete comment" });
+  return {
+    dialog,
+    cancel: within(dialog).getByRole("button", { name: "No, cancel" }),
+    confirm: within(dialog).getByRole("button", { name: "Yes, delete" }),
+  };
+};
+
 describe("CommentThread", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -744,6 +758,167 @@ describe("CommentThread", () => {
     render(<CommentThread />);
 
     expect(shown()).toHaveTextContent(/constant\. Still here$/);
+  });
+
+  it("offers Delete on your items and none on anyone else's, with no dialog open", () => {
+    render(<CommentThread />);
+
+    for (const card of screen.getAllByRole("article")) {
+      const own = within(card).queryByText("you") !== null;
+      const remove = within(card).queryByRole("button", { name: "Delete" });
+
+      if (own) expect(remove).toHaveAttribute("aria-haspopup", "dialog");
+      else expect(remove).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("asks before deleting, warns it can't be undone, and focuses the safe choice", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { dialog, cancel } = await openDelete(user);
+
+    expect(dialog).toHaveAccessibleDescription(/can’t be undone\.$/);
+    expect(cancel).toHaveFocus();
+    expect(shown()).toHaveTextContent(`@ramsesmiron ${OWN_TEXT}`);
+  });
+
+  it.each([
+    ["on No, cancel", (user: User, cancel: HTMLElement) => user.click(cancel)],
+    ["on Escape", (user: User) => user.keyboard("{Escape}")],
+  ])("keeps the reply %s and returns focus to Delete", async (_, close) => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { dialog, cancel } = await openDelete(user);
+    await close(user, cancel);
+
+    expect(dialog).not.toBeVisible();
+    expect(shown()).toHaveTextContent(`@ramsesmiron ${OWN_TEXT}`);
+    expect(deleteButton()).toHaveFocus();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("deletes your reply, then focuses the card before it, since none follows", async () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    const user = setup();
+    render(<CommentThread />);
+
+    const { dialog, confirm } = await openDelete(user);
+    await user.click(confirm);
+
+    const replies = within(
+      screen.getByRole("list", { name: "Replies to maxblagun" }),
+    ).getAllByRole("article");
+    expect(dialog).not.toBeVisible();
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toHaveAccessibleName("ramsesmiron 1 week ago");
+    expect(replies[0]).toHaveFocus();
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+    expect(scroll.mock.contexts.at(-1)).toBe(replies[0]);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Comment deleted$/);
+  });
+
+  it("focuses the card that follows a deleted comment", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    for (const text of ["First", "Second"]) {
+      await user.type(composer().field, text);
+      await user.click(composer().send);
+    }
+
+    const [first, second] = screen.getAllByRole("article").slice(-2);
+    const { confirm } = await openDelete(user, first);
+    await user.click(confirm);
+
+    expect(first).not.toBeInTheDocument();
+    expect(second).toHaveTextContent("Second");
+    expect(second).toHaveFocus();
+  });
+
+  it("deletes a comment of yours with its replies, then focuses the comment after them", async () => {
+    save([
+      comment({
+        id: 1,
+        username: "juliusomo",
+        score: 9,
+        replies: [
+          {
+            id: 2,
+            username: "maxblagun",
+            content: "A reply",
+            score: 0,
+            createdAt: NOW,
+            vote: 0,
+            replyingTo: "juliusomo",
+          },
+        ],
+      }),
+      comment({ id: 3, content: "Still here" }),
+    ]);
+    const user = setup();
+    render(<CommentThread />);
+    const [own, , after] = screen.getAllByRole("article");
+
+    const { confirm } = await openDelete(user, own);
+    await user.click(confirm);
+
+    const remaining = screen.getAllByRole("article");
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toBe(after);
+    expect(after).toHaveFocus();
+  });
+
+  it.each([
+    ["after Escape", (user: User) => user.keyboard("{Escape}")],
+    [
+      "after a first Yes",
+      (user: User, confirm: HTMLElement) => user.click(confirm),
+    ],
+  ])(
+    "ignores Yes, delete on a panel that is still fading out %s",
+    async (_, close) => {
+      const user = setup();
+      render(<CommentThread />);
+      const status = screen.getByRole("status");
+      const { confirm } = await openDelete(user);
+      await close(user, confirm);
+      const announced = status.firstElementChild;
+      const count = screen.getAllByRole("article").length;
+
+      fireEvent.click(confirm);
+
+      expect(status.firstElementChild).toBe(announced);
+      expect(screen.getAllByRole("article")).toHaveLength(count);
+    },
+  );
+
+  it("never hands focus back to the Delete it removed, so the browser never scrolls to where it was", async () => {
+    const user = setup();
+    render(<CommentThread />);
+    const { confirm } = await openDelete(user);
+    const restore = vi.spyOn(deleteButton(), "focus");
+
+    await user.click(confirm);
+
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("keeps a deletion on the next visit", async () => {
+    const user = setup();
+    const { unmount } = render(<CommentThread />);
+    const { confirm } = await openDelete(user);
+    await user.click(confirm);
+
+    unmount();
+    render(<CommentThread />);
+
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(
+      screen.queryByRole("article", { name: OWN_REPLY }),
+    ).not.toBeInTheDocument();
   });
 
   it("prerenders the same seed whatever the build clock or storage says", () => {

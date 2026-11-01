@@ -70,11 +70,11 @@ export function castVote(
   return updatePost(comments, id, (post) => toggleVote(post, direction));
 }
 
+export const readingOrder = (comments: Comment[]) =>
+  comments.flatMap((comment) => [comment, ...comment.replies]);
+
 function nextId(comments: Comment[]) {
-  const ids = comments.flatMap((comment) => [
-    comment.id,
-    ...comment.replies.map((reply) => reply.id),
-  ]);
+  const ids = readingOrder(comments).map((post) => post.id);
   return Math.max(0, ...ids) + 1;
 }
 
@@ -155,6 +155,23 @@ export function editPost(comments: Comment[], id: number, content: string) {
   if (!text || text === target.content) return comments;
 
   return updatePost(comments, id, (post) => ({ ...post, content: text }));
+}
+
+export function deletePost(comments: Comment[], id: number) {
+  const found = locate(comments, id);
+  if (!found) return comments;
+
+  const { thread, target } = found;
+  if (target === thread) return comments.filter((post) => post !== thread);
+
+  return comments.map((comment) =>
+    comment === thread
+      ? {
+          ...comment,
+          replies: comment.replies.filter((reply) => reply !== target),
+        }
+      : comment,
+  );
 }
 
 type Fields = Record<string, unknown>;

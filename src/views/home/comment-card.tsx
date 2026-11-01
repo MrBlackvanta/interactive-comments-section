@@ -1,4 +1,4 @@
-import { EditIcon, ReplyIcon } from "@/components/icons";
+import { DeleteIcon, EditIcon, ReplyIcon } from "@/components/icons";
 import {
   AVATARS,
   CURRENT_USER,
@@ -19,12 +19,18 @@ type CommentCardProps = {
   onVote: (id: number, direction: Direction) => void;
   onReply: (id: number, content: string) => void;
   onEdit: (id: number, content: string) => void;
+  onDelete: (id: number) => void;
 };
 
 const body = "col-span-2 md:col-start-2 md:row-start-2";
 
+const actions =
+  "col-start-2 row-start-3 flex flex-wrap justify-end gap-x-4 gap-y-2 self-center justify-self-end md:col-start-3 md:row-start-1 md:gap-x-6";
+
 const action =
-  "col-start-2 row-start-3 flex items-center gap-2 self-center justify-self-end text-body-m-bold text-accent v-focus transition-[color] duration-150 ease-out hover:text-accent-soft md:col-start-3 md:row-start-1";
+  "flex items-center gap-2 text-body-m-bold v-focus transition-[color] duration-150 ease-out";
+
+const accentAction = `${action} text-accent hover:text-accent-soft`;
 
 export default function CommentCard({
   post,
@@ -32,6 +38,7 @@ export default function CommentCard({
   onVote,
   onReply,
   onEdit,
+  onDelete,
 }: CommentCardProps) {
   const id = useId();
   const authorId = `${id}-author`;
@@ -115,29 +122,42 @@ export default function CommentCard({
           vote={post.vote}
           onVote={(direction) => onVote(post.id, direction)}
         />
-        {own ? (
-          <button
-            ref={editButton}
-            type="button"
-            aria-expanded={editing}
-            onClick={() => setEditing((open) => !open)}
-            className={action}
-          >
-            <EditIcon />
-            Edit
-          </button>
-        ) : (
-          <button
-            ref={replyButton}
-            type="button"
-            aria-expanded={replying}
-            onClick={() => setReplying((open) => !open)}
-            className={action}
-          >
-            <ReplyIcon />
-            Reply
-          </button>
-        )}
+        <div className={actions}>
+          {own ? (
+            <>
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => onDelete(post.id)}
+                className={`${action} text-danger hover:text-danger-soft`}
+              >
+                <DeleteIcon />
+                Delete
+              </button>
+              <button
+                ref={editButton}
+                type="button"
+                aria-expanded={editing}
+                onClick={() => setEditing((open) => !open)}
+                className={accentAction}
+              >
+                <EditIcon />
+                Edit
+              </button>
+            </>
+          ) : (
+            <button
+              ref={replyButton}
+              type="button"
+              aria-expanded={replying}
+              onClick={() => setReplying((open) => !open)}
+              className={accentAction}
+            >
+              <ReplyIcon />
+              Reply
+            </button>
+          )}
+        </div>
       </article>
       {replying && (
         <CommentForm
