@@ -78,12 +78,19 @@ function nextId(comments: Comment[]) {
   return Math.max(0, ...ids) + 1;
 }
 
+export function toContent(text: string, replyingTo?: Username) {
+  const content = text.trim();
+  if (!replyingTo) return content;
+
+  return content.replace(new RegExp(`^@${replyingTo}(?!\\S)`), "").trim();
+}
+
 export function addComment(
   comments: Comment[],
   content: string,
   createdAt: number,
 ): Comment[] {
-  const text = content.trim();
+  const text = toContent(content);
   if (!text) return comments;
 
   return [
@@ -98,6 +105,43 @@ export function addComment(
       replies: [],
     },
   ];
+}
+
+function locate(comments: Comment[], id: number) {
+  for (const comment of comments) {
+    const target = [comment, ...comment.replies].find((post) => post.id === id);
+    if (target) return { thread: comment, target };
+  }
+}
+
+export function addReply(
+  comments: Comment[],
+  id: number,
+  content: string,
+  createdAt: number,
+): Comment[] {
+  const found = locate(comments, id);
+  if (!found) return comments;
+
+  const replyingTo = found.target.username;
+  const text = toContent(content, replyingTo);
+  if (!text) return comments;
+
+  const reply: Reply = {
+    id: nextId(comments),
+    username: CURRENT_USER,
+    content: text,
+    score: 0,
+    createdAt,
+    vote: 0,
+    replyingTo,
+  };
+
+  return comments.map((comment) =>
+    comment === found.thread
+      ? { ...comment, replies: [...comment.replies, reply] }
+      : comment,
+  );
 }
 
 type Fields = Record<string, unknown>;

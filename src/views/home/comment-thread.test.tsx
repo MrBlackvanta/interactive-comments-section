@@ -1,7 +1,7 @@
 import type { Comment } from "@/data";
 import { castVote, DAY, MINUTE, STORAGE_KEY } from "@/lib";
 import { installMatchMedia } from "@/test/media";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 import {
@@ -47,6 +47,28 @@ const composer = () => ({
 });
 
 const latest = () => screen.getAllByRole("article").at(-1)!;
+
+type User = ReturnType<typeof setup>;
+
+const replyButton = (name: string) =>
+  within(screen.getByRole("article", { name })).getByRole("button", {
+    name: "Reply",
+  });
+
+const replyForm = (author: string) => {
+  const field = screen.getByRole<HTMLTextAreaElement>("textbox", {
+    name: `Reply to @${author}`,
+  });
+  return {
+    field,
+    send: within(field.form!).getByRole("button", { name: "Reply" }),
+  };
+};
+
+const openReply = async (user: User, name: string) => {
+  await user.click(replyButton(name));
+  return replyForm(name.split(" ")[0]);
+};
 
 describe("CommentThread", () => {
   beforeEach(() => {
@@ -364,6 +386,181 @@ describe("CommentThread", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveTextContent(/^Comment sent$/);
     expect(status.firstElementChild).not.toBe(first);
+  });
+
+  it("leaves focus where it was on load, with no reply form open", () => {
+    render(<CommentThread />);
+
+    expect(document.body).toHaveFocus();
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+  });
+
+  it("offers a collapsed Reply on everyone else's items and none on yours", () => {
+    render(<CommentThread />);
+
+    for (const card of screen.getAllByRole("article")) {
+      const own = within(card).queryByText("you") !== null;
+      const reply = within(card).queryByRole("button", { name: "Reply" });
+
+      if (own) expect(reply).not.toBeInTheDocument();
+      else expect(reply).toHaveAttribute("aria-expanded", "false");
+    }
+  });
+
+  it("opens a focused reply form with the mention typed and the caret after it", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field } = await openReply(user, "maxblagun 2 weeks ago");
+
+    expect(replyButton("maxblagun 2 weeks ago")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(field).toHaveValue("@maxblagun ");
+    expect(field).toHaveFocus();
+    expect(field).toHaveAttribute("placeholder", "Reply to @maxblagun…");
+    expect(field.selectionStart).toBe(field.value.length);
+  });
+
+  it.each([
+    [
+      "a comment with no replies yet",
+      "amirrobson 1 month ago",
+      "Replies to amirrobson",
+      1,
+    ],
+    [
+      "a reply, under its comment",
+      "ramsesmiron 1 week ago",
+      "Replies to maxblagun",
+      3,
+    ],
+  ])(
+    "answers %s at the end of its thread, naming who it answers",
+    async (_, name, list, count) => {
+      const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+      const user = setup();
+      render(<CommentThread />);
+      const author = name.split(" ")[0];
+
+      const { field, send } = await openReply(user, name);
+      await user.type(field, " Thanks! ");
+      await user.click(send);
+
+      const replies = within(
+        screen.getByRole("list", { name: list }),
+      ).getAllByRole("article");
+      const added = replies.at(-1)!;
+      expect(replies).toHaveLength(count);
+      expect(added).toHaveAccessibleName("juliusomo you just now");
+      expect(
+        within(added).getByText(`@${author}`).parentElement,
+      ).toHaveTextContent(new RegExp(`^@${author} Thanks!$`));
+      expect(scroll).toHaveBeenCalledOnce();
+      expect(scroll.mock.contexts[0]).toBe(added);
+    },
+  );
+
+  it("closes the form after a reply and moves focus to the reply, leaving the scroll to the reveal", async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field, send } = await openReply(user, "amirrobson 1 month ago");
+    await user.type(field, "Thanks!");
+    await user.click(send);
+
+    const [added] = within(
+      screen.getByRole("list", { name: "Replies to amirrobson" }),
+    ).getAllByRole("article");
+    expect(field).not.toBeInTheDocument();
+    expect(added).toHaveFocus();
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+    expect(replyButton("amirrobson 1 month ago")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(/^Reply sent$/);
+  });
+
+  it.each([
+    ["only the mention", ""],
+    ["the mention and line breaks", "{Enter}  "],
+    ["nothing at all", "{Control>}a{/Control}{Backspace}"],
+  ])("refuses to send a reply of %s", async (_, keys) => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field, send } = await openReply(user, "amirrobson 1 month ago");
+    if (keys) await user.type(field, keys);
+    await user.click(send);
+
+    expect(field).toBeInvalid();
+    expect(field).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+  });
+
+  it("cancels a reply on Escape and returns focus to Reply", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field } = await openReply(user, "ramsesmiron 1 week ago");
+    await user.type(field, "Never mind");
+    await user.keyboard("{Escape}");
+
+    expect(field).not.toBeInTheDocument();
+    expect(replyButton("ramsesmiron 1 week ago")).toHaveFocus();
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+  });
+
+  it("keeps the form open when Escape only ends an IME composition", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field } = await openReply(user, "ramsesmiron 1 week ago");
+    fireEvent.keyDown(field, { key: "Escape", isComposing: true });
+
+    expect(field).toBeInTheDocument();
+  });
+
+  it("collapses the form when Reply is pressed again", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const { field } = await openReply(user, "amirrobson 1 month ago");
+    await user.click(replyButton("amirrobson 1 month ago"));
+
+    expect(field).not.toBeInTheDocument();
+  });
+
+  it("keeps several reply forms open at once, each with its own draft", async () => {
+    const user = setup();
+    render(<CommentThread />);
+
+    const first = await openReply(user, "amirrobson 1 month ago");
+    const second = await openReply(user, "ramsesmiron 1 week ago");
+    await user.type(second.field, "Second");
+
+    expect(first.field).toHaveValue("@amirrobson ");
+    expect(second.field).toHaveValue("@ramsesmiron Second");
+  });
+
+  it("keeps a reply on the next visit", async () => {
+    const user = setup();
+    const { unmount } = render(<CommentThread />);
+    const { field, send } = await openReply(user, "amirrobson 1 month ago");
+    await user.type(field, "Still here");
+    await user.click(send);
+
+    unmount();
+    render(<CommentThread />);
+
+    expect(
+      within(
+        screen.getByRole("list", { name: "Replies to amirrobson" }),
+      ).getByText("Still here"),
+    ).toBeInTheDocument();
   });
 
   it("prerenders the same seed whatever the build clock or storage says", () => {

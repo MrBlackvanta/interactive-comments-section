@@ -2,10 +2,12 @@ import type { Comment, Reply } from "@/data";
 import { describe, expect, it } from "vite-plus/test";
 import {
   addComment,
+  addReply,
   castVote,
   parseThread,
   seedThread,
   sortThread,
+  toContent,
   toggleVote,
 } from "./thread";
 import { DAY } from "./time";
@@ -242,6 +244,108 @@ describe("addComment", () => {
     addComment(thread, "Hi", 0);
 
     expect(thread).toEqual([comment()]);
+  });
+});
+
+describe("toContent", () => {
+  it.each([
+    ["trims a comment", "  Hi there \n", undefined, "Hi there"],
+    [
+      "keeps a mention in a comment",
+      "@maxblagun Hi",
+      undefined,
+      "@maxblagun Hi",
+    ],
+    [
+      "drops the leading mention of a reply",
+      "@maxblagun Hi",
+      "maxblagun",
+      "Hi",
+    ],
+    ["drops it across a line break", "@maxblagun\nHi", "maxblagun", "Hi"],
+    ["leaves nothing of a bare mention", " @maxblagun  ", "maxblagun", ""],
+    [
+      "keeps a mention of someone else",
+      "@ramsesmiron Hi",
+      "maxblagun",
+      "@ramsesmiron Hi",
+    ],
+    [
+      "keeps a longer name that starts alike",
+      "@maxblaguns Hi",
+      "maxblagun",
+      "@maxblaguns Hi",
+    ],
+    [
+      "keeps the mention later in the text",
+      "Hi @maxblagun",
+      "maxblagun",
+      "Hi @maxblagun",
+    ],
+    [
+      "drops only the first mention",
+      "@maxblagun @maxblagun",
+      "maxblagun",
+      "@maxblagun",
+    ],
+  ] as const)("%s", (_, text, replyingTo, expected) => {
+    expect(toContent(text, replyingTo)).toBe(expected);
+  });
+});
+
+describe("addReply", () => {
+  const thread = [
+    comment({ id: 1, username: "amirrobson" }),
+    comment({
+      id: 2,
+      replies: [reply({ id: 3, username: "ramsesmiron" })],
+    }),
+  ];
+
+  it.each([
+    ["a comment", 1, "amirrobson", 0],
+    ["a reply, under the same comment", 3, "ramsesmiron", 1],
+  ])(
+    "answers %s as the current user, unvoted and dated, at the end of its replies",
+    (_, id, replyingTo, index) => {
+      const replies = addReply(thread, id, `@${replyingTo}  Thanks! `, 42)[
+        index
+      ].replies;
+
+      expect(replies.at(-1)).toEqual({
+        id: 4,
+        username: "juliusomo",
+        content: "Thanks!",
+        score: 0,
+        createdAt: 42,
+        vote: 0,
+        replyingTo,
+      });
+      expect(replies).toHaveLength(thread[index].replies.length + 1);
+    },
+  );
+
+  it("leaves the other comments as they were", () => {
+    const [first, second] = addReply(thread, 3, "Hi", 0);
+
+    expect(first).toBe(thread[0]);
+    expect(second).not.toBe(thread[1]);
+  });
+
+  it.each([
+    ["an unknown id", 99, "Hi"],
+    ["blank text", 1, " \n "],
+    ["only the mention", 1, "@amirrobson "],
+  ])("ignores %s", (_, id, text) => {
+    expect(addReply(thread, id, text, 0)).toBe(thread);
+  });
+
+  it("leaves the original thread untouched", () => {
+    const before = structuredClone(thread);
+
+    addReply(thread, 3, "Hi", 0);
+
+    expect(thread).toEqual(before);
   });
 });
 
